@@ -1,10 +1,10 @@
+
+# coding: utf-8
+
+# In[1]:
+
+
 from __future__ import print_function
-
-import pyaudio
-import wave
-import time
-
-
 from pyAudioAnalysis import audioBasicIO
 from pyAudioAnalysis import audioFeatureExtraction as aF
 import matplotlib.pyplot as plt
@@ -15,41 +15,9 @@ import cPickle
 import numpy as np
 import re
 
-def record():
-	FORMAT = pyaudio.paInt16
-	CHANNELS = 1
-	RATE = 44100
-	CHUNK = 2048
-	RECORD_SECONDS = 10
-	WAVE_OUTPUT_FILENAME = "file.wav"
 
-	audio = pyaudio.PyAudio()
+# In[2]:
 
-	# start Recording
-	stream = audio.open(format=FORMAT, channels=CHANNELS,
-	                rate=RATE, input=True,
-	                frames_per_buffer=CHUNK)
-	print ("recording...")
-	frames = []
-
-	for i in range(0, int(RATE / CHUNK * RECORD_SECONDS)):
-	    data = stream.read(CHUNK)
-	    frames.append(data)
-	print ("finished recording")
-
-
-	# stop Recording
-	stream.stop_stream()
-	stream.close()
-	audio.terminate()
-
-	waveFile = wave.open(WAVE_OUTPUT_FILENAME, 'wb')
-	waveFile.setnchannels(CHANNELS)
-	waveFile.setsampwidth(audio.get_sample_size(FORMAT))
-	waveFile.setframerate(RATE)
-	waveFile.writeframes(b''.join(frames))
-	waveFile.close()
-	return WAVE_OUTPUT_FILENAME
 
 def loadSVModel(SVMmodelName):
     '''
@@ -76,16 +44,19 @@ def loadSVModel(SVMmodelName):
 
     COEFF = []
     with open(SVMmodelName, 'rb') as fid:
-        SVM = cPickle.load(fid)
+        SVM = cPickle.load(fid)    
 
     return(SVM, MEAN, STD)
+
+
+# In[3]:
+
 
 def perdict(files, file, modelName):
     #read audio file, convert to mono (if needed)
     [Fs, x] = audioBasicIO.readAudioFile(file)
     x = audioBasicIO.stereo2mono(x)
-    print("perdict")
-
+    
     if modelName:
         mtWin, mtStep, stWin, stStep = 1.0, 1.0, aT.shortTermWindow, aT.shortTermStep
         Classifier, MEAN, STD = loadSVModel(modelName)
@@ -106,10 +77,19 @@ def perdict(files, file, modelName):
     result = Classifier.predict(curFV.reshape(1,-1))[0]
     prob = Classifier.predict_proba(curFV.reshape(1,-1))[0]
     s = files[int(result)]
-
+    
     return re.findall(r'\d+',s)[0] + " pills", prob
 
-fileName = "audio/test/pills_50 copy.wav"
+
+# In[4]:
+
+
 files = ["audio/pills_1/","audio/pills_10/", "audio/pills_25/", "audio/pills_50/"]
-result = perdict(files, fileName, "myMod")
-print(result)
+prediction = perdict(files, "audio/test/pills_50.wav", "myMod")
+print("prediction {}".format(prediction))
+
+# In[ ]:
+
+
+
+
