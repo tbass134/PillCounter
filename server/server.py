@@ -38,17 +38,20 @@ import wave
 CLIP_MIN_MS = 2000  # 200ms - the minimum audio clip that will be used
 MAX_LENGTH = 10000  # Max length of a sound clip for processing in ms
 SILENCE = 20  # How many continuous frames of silence determine the end of a phrase
-port = 8000
 path = './recordings/'
-host = 'ca80220b.ngrok.io'
-event_url = "http://{}/event".format(host)
+
 
 
 dotenv_path = join(dirname(__file__), '.env')
 load_dotenv(dotenv_path)
 APPLICATION_PRIVATE_KEY_PATH = os.getenv('APPLICATION_PRIVATE_KEY_PATH')
 APPLICATION_ID = os.getenv('APPLICATION_ID')
-MODEL_NAME = os.getenv('MODEL_NAME')
+MODEL_PATH = os.getenv('MODEL_PATH')
+
+HOST = os.getenv('HOST')
+PORT = os.getenv('PORT')
+event_url = "http://{}/event".format(HOST)
+
 
 # Constants:
 BYTES_PER_FRAME = 640  # Bytes in a frame
@@ -142,21 +145,21 @@ class Processor(object):
 
 
 class Predict(object):
-    def __init__(self, modelName):
+    def __init__(self, modelPath):
         self.files = ["1 pill","10 pills", "25 pills", "50 pills"]
-        self.model = self.loadSVModel(modelName)
+        self.model = self.loadSVModel(modelPath)
 
-    def loadSVModel(self,SVMmodelName):
+    def loadSVModel(self,SVMmodePath):
         '''
         This function loads an SVM model either for classification or training.
         ARGMUMENTS:
             - SVMmodelName:     the path of the model to be loaded
             - isRegression:        a flag indigating whereas this model is regression or not
         '''
-        print("loading model {}".format(SVMmodelName))
+        print("loading model {}".format(SVMmodePath))
 
         try:
-            fo = open(SVMmodelName+"MEANS", "rb")
+            fo = open(SVMmodePath+"MEANS", "rb")
         except IOError:
                 print ("Load SVM Model: Didn't find file")
                 return
@@ -172,7 +175,7 @@ class Predict(object):
         STD = np.array(STD)
 
         COEFF = []
-        with open(SVMmodelName, 'rb') as fid:
+        with open(SVMmodePath, 'rb') as fid:
             SVM = cPickle.load(fid)
 
         return(SVM, MEAN, STD)
@@ -304,7 +307,7 @@ def main(argv=sys.argv[1:]):
         nexmoObj = NexmoObj()
 
         global Predict 
-        Predict = Predict(MODEL_NAME)
+        Predict = Predict(MODEL_PATH)
 
         is_predicting = False
 
@@ -313,14 +316,14 @@ def main(argv=sys.argv[1:]):
         processor = Processor(path, is_predicting).process
 
         application = tornado.web.Application([
-            url(r"/ncco", NCCOHandler, dict(host=host, event_url=event_url)),
+            url(r"/ncco", NCCOHandler, dict(host=HOST, event_url=event_url)),
             url(r'/socket', WSHandler, dict(processor=processor)),
             url(r'/event', EventHandler),
         ])
 
         http_server = tornado.httpserver.HTTPServer(application)
-        http_server.listen(port)
-        info("Running on port %s", port)
+        http_server.listen(PORT)
+        info("Running on port %s", PORT)
         tornado.ioloop.IOLoop.instance().start()
     except KeyboardInterrupt:
         pass  # Suppress the stack-trace on quit
