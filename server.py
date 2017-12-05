@@ -62,7 +62,6 @@ uuid = None
 nexmoObj = None
 Predict = None
 
-
 class BufferedPipe(object):
     def __init__(self, max_frames, sink):
         """
@@ -95,24 +94,36 @@ class BufferedPipe(object):
 
 
 class Processor(object):
-    def __init__(self, path):
+    def __init__(self, path, is_predicting):
         self.path = path
+        self.is_predicting = is_predicting
     def process(self, count, payload, cli):
         if count > CLIP_MIN_FRAMES:  # If the buffer is less than CLIP_MIN_MS, ignore it
-            info('Processing {} frames from {}'.format(count, cli))
-            fn = "{}rec-{}-{}.wav".format(self.path, cli, datetime.datetime.now().strftime("%Y%m%dT%H%M%S"))
-            output = wave.open(fn, 'wb')
-            output.setparams((1, 2, 16000, 0, 'NONE', 'not compressed'))
-            output.writeframes(payload)
-            output.close()
-            info('File written {}'.format(fn))
+            if self.is_predicting == False:
+                info('Processing {} frames from {}'.format(count, cli))
+                fn = "{}rec-{}-{}.wav".format(self.path, cli, datetime.datetime.now().strftime("%Y%m%dT%H%M%S"))
+                output = wave.open(fn, 'wb')
+                output.setparams((1, 2, 16000, 0, 'NONE', 'not compressed'))
+                output.writeframes(payload)
+                output.close()
+                info('File written {}'.format(fn))
 
-            prediction = Predict.perdict(fn)
-            print("prediction {}".format(prediction))
-            print("uuid {}".format(uuid))
+                self.is_predicting = True
+                prediction = Predict.perdict(fn)
+                print("prediction {}".format(prediction))
+                print("uuid {}".format(uuid))
+                print("self.is_predicting {}".format(self.is_predicting))
+                nexmoObj.talk(uuid, prediction[0])
 
-            # nexmoObj.talk(uuid, prediction[0])
-            # time.sleep()
+            else:
+                self.playback(payload, cli)
+                self.is_predicting = False
+                payload = None
+                count = 0
+                self.tick = 0
+                time.sleep(1)
+
+            print("self.is_predicting {}".format(self.is_predicting))
 
         else:
             info('Discarding {} frames'.format(str(count)))
@@ -201,7 +212,7 @@ class NexmoObj(object):
 
     def talk(self, call_id, perdiction):
         print('Talking... {}'.format(call_id))
-        response = self.client.send_speech(call_id, text=perdiction)
+        return self.client.send_speech(call_id, text=perdiction)
 
 
 class WSHandler(tornado.websocket.WebSocketHandler):
@@ -269,7 +280,6 @@ class EventHandler(tornado.web.RequestHandler):
         global uuid
         uuid = data['uuid']
 
-
         # print("got uuid {}".format(uuid))
         # print("data {}".format(data))
         self.set_header("Content-Type", 'text/plain')
@@ -296,9 +306,11 @@ def main(argv=sys.argv[1:]):
         global Predict 
         Predict = Predict(MODEL_NAME)
 
+        is_predicting = False
+
 
         #Pass any config for the processor into this argument.
-        processor = Processor(path).process
+        processor = Processor(path, is_predicting).process
 
         application = tornado.web.Application([
             url(r"/ncco", NCCOHandler, dict(host=host, event_url=event_url)),
