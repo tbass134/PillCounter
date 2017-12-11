@@ -1,0 +1,10 @@
+{
+  "name": "pill_counter_server",
+  "description": "Pill Counter server",
+  "repository": "https://git.heroku.com/mighty-scrubland-84356.git",
+  "keywords": ["python", "tornado"],
+  "success_url": "/",
+  "env": {
+      "BUILDPACK_URL": "https://github.com/heroku/heroku-buildpack-python"
+  }
+}

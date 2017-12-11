@@ -1,22 +1,19 @@
-#!/usr/bin/env python
+#!/usr/bin/python2
 
 from __future__ import absolute_import, print_function
 
 import argparse
-import ConfigParser as configparser
 import io
 import logging
 import os
 import sys
 import time
-from ConfigParser import SafeConfigParser as ConfigParser
 from logging import debug, info
 
-from sklearn import svm
-import sklearn.svm
 import cPickle
 import numpy as np
 import re
+import scipy
 
 import tornado.ioloop
 import tornado.websocket
@@ -31,21 +28,19 @@ import nexmo
 from os.path import join, dirname
 from dotenv import load_dotenv
 
+
 #Only used for record function
 import datetime
 import wave
+import scipy.io.wavfile as wav
 
 CLIP_MIN_MS = 2000  # 200ms - the minimum audio clip that will be used
 MAX_LENGTH = 10000  # Max length of a sound clip for processing in ms
 SILENCE = 20  # How many continuous frames of silence determine the end of a phrase
 path = './recordings/'
 
-
-
 dotenv_path = join(dirname(__file__), '.env')
 load_dotenv(dotenv_path)
-APPLICATION_PRIVATE_KEY_PATH = os.getenv('APPLICATION_PRIVATE_KEY_PATH')
-APPLICATION_ID = os.getenv('APPLICATION_ID')
 MODEL_PATH = os.getenv('MODEL_PATH')
 
 HOST = os.getenv('HOST')
@@ -62,7 +57,6 @@ CLIP_MIN_FRAMES = CLIP_MIN_MS // MS_PER_FRAME
 # Global variables
 conns = {}
 uuid = None
-nexmoObj = None
 Predict = None
 
 class BufferedPipe(object):
@@ -101,6 +95,8 @@ class Processor(object):
         self.path = path
         self.is_predicting = is_predicting
     def process(self, count, payload, cli):
+        print("count {}".format(count))
+        print("self.is_predicting {}".format(self.is_predicting))
         if count > CLIP_MIN_FRAMES:  # If the buffer is less than CLIP_MIN_MS, ignore it
             if self.is_predicting == False:
                 info('Processing {} frames from {}'.format(count, cli))
@@ -111,26 +107,22 @@ class Processor(object):
                 output.close()
                 info('File written {}'.format(fn))
 
-                self.is_predicting = True
-                prediction = Predict.perdict(fn)
+                prediction, prob = Predict.perdict(fn)
                 print("prediction {}".format(prediction))
                 print("uuid {}".format(uuid))
                 print("self.is_predicting {}".format(self.is_predicting))
-                nexmoObj.talk(uuid, prediction[0])
-
+                count = 0
+                payload = None
+                fs, audio = wav.read("prediction/{}.wav".format(prediction))
+                self.playback(audio.tobytes(), cli)
             else:
+                print("playback")
                 self.playback(payload, cli)
                 self.is_predicting = False
-                payload = None
-                count = 0
-                self.tick = 0
-                time.sleep(1)
-
-            print("self.is_predicting {}".format(self.is_predicting))
-
         else:
             info('Discarding {} frames'.format(str(count)))
     def playback(self, content, cli):
+        self.is_predicting = False
         frames = len(content) // 640
         info("Playing {} frames to {}".format(frames, cli))
         conn = conns[cli]
@@ -146,7 +138,7 @@ class Processor(object):
 
 class Predict(object):
     def __init__(self, modelPath):
-        self.files = ["1 pill","10 pills", "25 pills", "50 pills"]
+        self.files = ["pills_1","pills_10", "pills_25", "pills_50"]
         self.model = self.loadSVModel(modelPath)
 
     def loadSVModel(self,SVMmodePath):
@@ -183,10 +175,8 @@ class Predict(object):
     def perdict(self, file):
         shortTermWindow = 0.050
         shortTermStep = 0.050
-
-        from pyAudioAnalysis import audioBasicIO
-        from pyAudioAnalysis import audioFeatureExtraction as aF
-
+        from _pyAudioAnalysis import audioBasicIO
+        from _pyAudioAnalysis import audioFeatureExtraction as aF
         print("perdict: files:{} file:{} ".format(self.files, file ))
         #read audio file, convert to mono (if needed)
         [Fs, x] = audioBasicIO.readAudioFile(file)
@@ -208,15 +198,6 @@ class Predict(object):
         s = self.files[int(result)]
 
         return s, prob
-
-class NexmoObj(object):
-    def __init__(self):
-        self.client = nexmo.Client(application_id=APPLICATION_ID, private_key=APPLICATION_PRIVATE_KEY_PATH)
-
-    def talk(self, call_id, perdiction):
-        print('Talking... {}'.format(call_id))
-        return self.client.send_speech(call_id, text=perdiction)
-
 
 class WSHandler(tornado.websocket.WebSocketHandler):
     def initialize(self, processor):
@@ -262,6 +243,7 @@ class NCCOHandler(tornado.web.RequestHandler):
         self._host = host
         self._event_url = event_url
         self._template = tornado.template.Loader(".").load("ncco.json")
+        info("template {}".format(self._template))
     def get(self):
         cli = self.get_argument("from", None).lstrip("+")
         to = self.get_argument("to", None)
@@ -302,9 +284,6 @@ def main(argv=sys.argv[1:]):
             level=logging.INFO if args.verbose < 1 else logging.DEBUG,
             format="%(levelname)7s %(message)s",
         )
-
-        global nexmoObj
-        nexmoObj = NexmoObj()
 
         global Predict 
         Predict = Predict(MODEL_PATH)
